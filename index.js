@@ -1,8 +1,7 @@
 const app = require("express")();
 app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 app.listen(9091, () => console.log("listening on http port 9091"));
-
-const { response } = require("express");
+const { stat } = require("fs");
 const http = require("http");
 const httpServer = http.createServer();
 const websocketServer = require("websocket").server;
@@ -61,7 +60,6 @@ wsServer.on("request", (request) => {
     if (result.method === "join") {
       const clientId = result.clientId;
       const gameId = result.gameId;
-      console.log(clientId + " " + gameId);
       const game = games[gameId];
 
       if (game.clients.length >= 4) {
@@ -69,26 +67,43 @@ wsServer.on("request", (request) => {
         console.log("sorry max player reached");
         return;
       }
-
+      //stores value that matches with [game.clients.length]
       const color = { 0: "Red", 1: "Green", 2: "Blue", 3: "Yellow" }[
         game.clients.length
       ];
 
+      //all of the clients share same game id
       game.clients.push({
         clientId: clientId,
         color: color,
       });
 
+      //start the game
+      if (game.clients.length === 2) updateGameState();
+
       const payLoad = {
         method: "join",
-        game: "game",
+        game: game,
       };
+
       //loop through all clients and tell them that people has joined
       game.clients.forEach((c) => {
         clients[c.clientId].connection.send(JSON.stringify(payLoad));
       });
     }
+
+    if (result.method === "play") {
+      const gameId = result.gameId;
+      const ballId = result.ballId;
+      const color = result.color;
+      let state = games[gameId].state;
+      if (!state) state = {};
+      state[ballId] = color;
+      games[gameId].state = state;
+    }
   });
+
+  //very first connection
   //generate a new clientId from guid()
   const clientId = guid();
 
@@ -106,7 +121,20 @@ wsServer.on("request", (request) => {
   //respond to client with JSON changed to string
   connection.send(JSON.stringify(payLoad));
 });
-
+function updateGameState() {
+  //{"gameid", asfsaf}
+  for (const g of Object.keys(games)) {
+    const game = games[g];
+    const payLoad = {
+      method: "update",
+      game: game,
+    };
+    game.clients.forEach((c) => {
+      clients[c.clientId].connection.send(JSON.stringify(payLoad));
+    });
+  }
+  setTimeout(updateGameState, 500);
+}
 //guid generator
 const guid = () => {
   function s4() {
